@@ -35,11 +35,11 @@ export const PresetStockModal: React.FC<PresetStockModalProps> = ({
   // New item form state
   const [newSku, setNewSku] = useState('');
   const [newName, setNewName] = useState('');
-  const [newCategory, setNewCategory] = useState<WMSItem['category']>('Electronics');
-  const [newUnit, setNewUnit] = useState<WMSItem['unit']>('pcs');
+  const [newCategory, setNewCategory] = useState<string>('Workbook');
+  const [newUnit, setNewUnit] = useState<string>('pcs');
   const [newMinStock, setNewMinStock] = useState<number>(50);
-  const [newCost, setNewCost] = useState<number>(10);
-  const [newSupplier, setNewSupplier] = useState('Apex Industrial Global');
+  const [newCost, setNewCost] = useState<number>(22.50);
+  const [newSupplier, setNewSupplier] = useState('Cambridge University Press');
 
   if (!isOpen) return null;
 
@@ -65,20 +65,25 @@ export const PresetStockModal: React.FC<PresetStockModalProps> = ({
     e.preventDefault();
     if (!newSku.trim() || !newName.trim()) return;
 
+    const code = newSku.trim().toUpperCase();
+    const title = newName.trim();
+
     const newItem: WMSItem = {
       id: `item-${Date.now()}`,
-      sku: newSku.trim().toUpperCase(),
-      name: newName.trim(),
+      isbn: code,
+      sku: code,
+      title: title,
+      name: title,
       category: newCategory,
       unit: newUnit,
       minRequiredStock: Math.max(0, newMinStock),
       stockBalance: 0,
       extraPoStock: 0,
       unitCost: Math.max(0.1, newCost),
-      supplierId: `SUP-${Date.now().toString().slice(-4)}`,
+      supplierId: newSupplier.toLowerCase().includes('oxford') ? 'SUP-OUP' : 'SUP-CUP',
       supplierName: newSupplier.trim(),
       leadTimeDays: 7,
-      locationBin: 'GEN-01',
+      locationBin: 'A-03-01',
       lastBalanceUpdate: 'Just added',
       lastPoUpdate: 'Just added'
     };
@@ -100,26 +105,33 @@ export const PresetStockModal: React.FC<PresetStockModalProps> = ({
   };
 
   const handleExportPresets = () => {
-    const header = ['SKU', 'Item Name', 'Category', 'Unit', 'Preset Minimum Required Stock', 'Unit Cost ($)', 'Supplier', 'Bin'];
-    const rows = items.map(i => [
-      `"${i.sku}"`,
-      `"${i.name.replace(/"/g, '""')}"`,
-      `"${i.category}"`,
-      `"${i.unit}"`,
-      i.minRequiredStock,
-      i.unitCost.toFixed(2),
-      `"${i.supplierName}"`,
-      `"${i.locationBin}"`
-    ].join(','));
+    const header = ['ISBN', 'SKU', 'Book Title', 'Category', 'Unit', 'Preset Minimum Required Stock', 'Unit Price ($)', 'Supplier', 'Bin'];
+    const rows = items.map(i => {
+      const title = (i.title || i.name || '').replace(/"/g, '""');
+      const code = i.isbn || i.sku || '';
+      return [
+        `"${code}"`,
+        `"${i.sku || code}"`,
+        `"${title}"`,
+        `"${i.category}"`,
+        `"${i.unit}"`,
+        i.minRequiredStock,
+        i.unitCost.toFixed(2),
+        `"${i.supplierName}"`,
+        `"${i.locationBin}"`
+      ].join(',');
+    });
     const content = [header.join(','), ...rows].join('\n');
     downloadFile(content, 'wms_preset_minimum_stock_catalog.csv');
   };
 
-  const filteredItems = items.filter(item => 
-    item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.category.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredItems = items.filter(item => {
+    const query = searchQuery.toLowerCase();
+    const code = (item.isbn || item.sku || '').toLowerCase();
+    const title = (item.title || item.name || '').toLowerCase();
+    const cat = item.category.toLowerCase();
+    return code.includes(query) || title.includes(query) || cat.includes(query);
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs">
@@ -223,24 +235,24 @@ export const PresetStockModal: React.FC<PresetStockModalProps> = ({
               </div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div>
-                  <label className="text-[11px] text-slate-400">SKU Code *</label>
+                  <label className="text-[11px] text-slate-400">ISBN / Code *</label>
                   <input
                     type="text"
                     required
                     value={newSku}
                     onChange={(e) => setNewSku(e.target.value)}
-                    placeholder="e.g. SKU-ELC-9901"
+                    placeholder="e.g. 9781108742719"
                     className="w-full mt-1 px-2.5 py-1.5 text-xs font-mono bg-slate-900 border border-slate-800 rounded text-slate-200"
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="text-[11px] text-slate-400">Description *</label>
+                  <label className="text-[11px] text-slate-400">Book Title *</label>
                   <input
                     type="text"
                     required
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    placeholder="e.g. Servo Motor Controller 400W"
+                    placeholder="e.g. CAMBRIDGE PRIMARY SCIENCE WORKBOOK 1"
                     className="w-full mt-1 px-2.5 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded text-slate-200"
                   />
                 </div>
@@ -248,15 +260,13 @@ export const PresetStockModal: React.FC<PresetStockModalProps> = ({
                   <label className="text-[11px] text-slate-400">Category</label>
                   <select
                     value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value as any)}
+                    onChange={(e) => setNewCategory(e.target.value)}
                     className="w-full mt-1 px-2.5 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded text-slate-200"
                   >
-                    <option value="Electronics">Electronics</option>
-                    <option value="Mechanical">Mechanical</option>
-                    <option value="Fasteners">Fasteners</option>
-                    <option value="Pneumatics">Pneumatics</option>
-                    <option value="Packaging">Packaging</option>
-                    <option value="Raw Materials">Raw Materials</option>
+                    <option value="Workbook">Workbook</option>
+                    <option value="Teacher Resource">Teacher Resource</option>
+                    <option value="Textbook">Textbook</option>
+                    <option value="Supplementary">Supplementary</option>
                   </select>
                 </div>
               </div>
@@ -277,19 +287,17 @@ export const PresetStockModal: React.FC<PresetStockModalProps> = ({
                   <label className="text-[11px] text-slate-400">Unit of Measure</label>
                   <select
                     value={newUnit}
-                    onChange={(e) => setNewUnit(e.target.value as any)}
+                    onChange={(e) => setNewUnit(e.target.value)}
                     className="w-full mt-1 px-2.5 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded text-slate-200"
                   >
                     <option value="pcs">pcs</option>
                     <option value="box">box</option>
                     <option value="pack">pack</option>
-                    <option value="roll">roll</option>
                     <option value="set">set</option>
-                    <option value="kg">kg</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-[11px] text-slate-400">Unit Cost ($)</label>
+                  <label className="text-[11px] text-slate-400">Unit Price ($)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -300,7 +308,7 @@ export const PresetStockModal: React.FC<PresetStockModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] text-slate-400">Supplier Name</label>
+                  <label className="text-[11px] text-slate-400">Publisher / Supplier</label>
                   <input
                     type="text"
                     value={newSupplier}
@@ -322,7 +330,7 @@ export const PresetStockModal: React.FC<PresetStockModalProps> = ({
                   type="submit"
                   className="px-3.5 py-1 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded"
                 >
-                  Confirm & Add SKU
+                  Confirm & Add Title
                 </button>
               </div>
             </form>
@@ -334,10 +342,10 @@ export const PresetStockModal: React.FC<PresetStockModalProps> = ({
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-800/80 text-slate-400 font-medium border-b border-slate-800 sticky top-0 z-10">
               <tr>
-                <th className="px-4 py-2.5">SKU Code</th>
-                <th className="px-4 py-2.5">Item Description</th>
+                <th className="px-4 py-2.5">ISBN / SKU</th>
+                <th className="px-4 py-2.5">Book Title</th>
                 <th className="px-4 py-2.5">Category</th>
-                <th className="px-4 py-2.5">Supplier</th>
+                <th className="px-4 py-2.5">Publisher</th>
                 <th className="px-4 py-2.5 text-right w-40">Preset Min Required</th>
                 <th className="px-4 py-2.5 text-right">Unit Price</th>
               </tr>
@@ -345,9 +353,9 @@ export const PresetStockModal: React.FC<PresetStockModalProps> = ({
             <tbody className="divide-y divide-slate-800/60 font-mono">
               {filteredItems.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-800/30 transition-colors">
-                  <td className="px-4 py-2 font-semibold text-slate-200">{item.sku}</td>
+                  <td className="px-4 py-2 font-semibold text-slate-200">{item.isbn || item.sku}</td>
                   <td className="px-4 py-2 font-sans text-slate-300 font-medium">
-                    {item.name}
+                    {item.title || item.name}
                   </td>
                   <td className="px-4 py-2 font-sans text-slate-400 text-[11px]">
                     {item.category}

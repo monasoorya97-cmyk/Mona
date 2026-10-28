@@ -17,11 +17,15 @@ import { exportPurchaseOrderCSV } from '../utils/csvHelper';
 interface PurchaseOrdersListProps {
   purchaseOrders: PurchaseOrder[];
   onReceivePO: (poId: string) => void;
+  canReceiveStock?: boolean;
+  canExportData?: boolean;
 }
 
 export const PurchaseOrdersList: React.FC<PurchaseOrdersListProps> = ({
   purchaseOrders,
   onReceivePO,
+  canReceiveStock = true,
+  canExportData = true,
 }) => {
   const [expandedId, setExpandedId] = useState<string | null>(purchaseOrders[0]?.id || null);
   const [search, setSearch] = useState('');
@@ -150,8 +154,8 @@ export const PurchaseOrdersList: React.FC<PurchaseOrdersListProps> = ({
                       <table className="w-full text-left text-xs">
                         <thead className="bg-slate-900 text-slate-400 border-b border-slate-800">
                           <tr>
-                            <th className="px-3 py-2">SKU</th>
-                            <th className="px-3 py-2">Item Description</th>
+                            <th className="px-3 py-2">ISBN / SKU</th>
+                            <th className="px-3 py-2">Book Title</th>
                             <th className="px-3 py-2 text-right">Quantity Ordered</th>
                             <th className="px-3 py-2 text-right">Unit Price</th>
                             <th className="px-3 py-2 text-right">Total</th>
@@ -160,8 +164,8 @@ export const PurchaseOrdersList: React.FC<PurchaseOrdersListProps> = ({
                         <tbody className="divide-y divide-slate-800/60 font-mono">
                           {po.items.map((item, idx) => (
                             <tr key={idx} className="hover:bg-slate-900/40">
-                              <td className="px-3 py-2 font-semibold text-slate-200">{item.sku}</td>
-                              <td className="px-3 py-2 font-sans text-slate-300">{item.name}</td>
+                              <td className="px-3 py-2 font-semibold text-slate-200">{item.isbn || item.sku}</td>
+                              <td className="px-3 py-2 font-sans text-slate-300 font-medium">{item.title || item.name}</td>
                               <td className="px-3 py-2 text-right text-cyan-300 font-bold">
                                 {item.qtyToOrder} {item.unit}
                               </td>
@@ -178,20 +182,22 @@ export const PurchaseOrdersList: React.FC<PurchaseOrdersListProps> = ({
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => exportPurchaseOrderCSV(po)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-md border border-slate-700 transition-colors"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        Download PO CSV
-                      </button>
+                      {canExportData && (
+                        <button
+                          type="button"
+                          onClick={() => exportPurchaseOrderCSV(po)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-md border border-slate-700 transition-colors cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Download PO CSV
+                        </button>
+                      )}
 
-                      {!isFulfilled && (
+                      {!isFulfilled && canReceiveStock && (
                         <button
                           type="button"
                           onClick={() => onReceivePO(po.id)}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-md shadow-xs transition-colors"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-md shadow-xs transition-colors cursor-pointer"
                           title="Transfer this PO stock into Physical Stock Balance and mark PO fulfilled"
                         >
                           <PackageCheck className="w-3.5 h-3.5" />

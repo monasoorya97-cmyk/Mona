@@ -77,8 +77,10 @@ export const GeneratePOModal: React.FC<GeneratePOModalProps> = ({
     const deliveryStr = expectedDates[name] || delivery.toISOString().split('T')[0];
 
     const lineItems: PurchaseOrderLineItem[] = group.items.map(g => ({
-      sku: g.item.sku,
-      name: g.item.name,
+      isbn: g.item.isbn || g.item.sku,
+      sku: g.item.sku || g.item.isbn,
+      title: g.item.title || g.item.name,
+      name: g.item.name || g.item.title,
       unit: g.item.unit,
       qtyToOrder: g.qtyToOrder,
       unitCost: g.item.unitCost,
@@ -138,7 +140,7 @@ export const GeneratePOModal: React.FC<GeneratePOModalProps> = ({
                 Generate Supplier Purchase Orders
               </h2>
               <p className="text-xs text-slate-400">
-                Auto-grouped by vendor for {totalItemCount} shortage items requiring supplier reorder.
+                Auto-grouped by publisher/vendor for {totalItemCount} shortage titles requiring supplier reorder.
               </p>
             </div>
           </div>
@@ -184,7 +186,7 @@ export const GeneratePOModal: React.FC<GeneratePOModalProps> = ({
               {/* Order Meta Card */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 bg-slate-950 border border-slate-800 rounded-lg text-xs">
                 <div>
-                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-semibold">Supplier Vendor</div>
+                  <div className="text-[11px] text-slate-500 uppercase tracking-wider font-semibold">Publisher / Supplier</div>
                   <div className="text-sm font-semibold text-slate-200 mt-0.5">{currentGroup.supplierName}</div>
                   <div className="text-slate-400 text-[11px] mt-0.5">Vendor ID: {currentGroup.supplierId}</div>
                 </div>
@@ -194,7 +196,7 @@ export const GeneratePOModal: React.FC<GeneratePOModalProps> = ({
                     <Truck className="w-3.5 h-3.5 text-cyan-400" />
                     <span>{currentGroup.leadTimeDays} business days</span>
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">Direct factory dispatch</div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">Direct publisher warehouse dispatch</div>
                 </div>
                 <div>
                   <label className="text-[11px] text-slate-500 uppercase tracking-wider font-semibold flex items-center gap-1">
@@ -215,8 +217,8 @@ export const GeneratePOModal: React.FC<GeneratePOModalProps> = ({
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-800/80 text-slate-400 font-medium border-b border-slate-800">
                     <tr>
-                      <th className="px-3 py-2.5">SKU</th>
-                      <th className="px-3 py-2.5">Item Description</th>
+                      <th className="px-3 py-2.5">ISBN / SKU</th>
+                      <th className="px-3 py-2.5">Book Title</th>
                       <th className="px-3 py-2.5 text-right">Required Deficit</th>
                       <th className="px-3 py-2.5 text-right">Order Qty</th>
                       <th className="px-3 py-2.5 text-right">Unit Price</th>
@@ -226,8 +228,8 @@ export const GeneratePOModal: React.FC<GeneratePOModalProps> = ({
                   <tbody className="divide-y divide-slate-800/60 font-mono">
                     {currentGroup.items.map((entry, idx) => (
                       <tr key={idx} className="hover:bg-slate-800/30">
-                        <td className="px-3 py-2 text-slate-200 font-semibold">{entry.item.sku}</td>
-                        <td className="px-3 py-2 font-sans text-slate-300">{entry.item.name}</td>
+                        <td className="px-3 py-2 text-slate-200 font-semibold">{entry.item.isbn || entry.item.sku}</td>
+                        <td className="px-3 py-2 font-sans text-slate-300 font-medium">{entry.item.title || entry.item.name}</td>
                         <td className="px-3 py-2 text-right text-rose-400">
                           {Math.max(0, entry.item.minRequiredStock - entry.item.stockBalance - entry.item.extraPoStock)} {entry.item.unit}
                         </td>

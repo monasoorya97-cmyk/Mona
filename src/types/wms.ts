@@ -1,13 +1,15 @@
 export interface WMSItem {
   id: string;
-  sku: string;
-  name: string;
-  category: 'Electronics' | 'Mechanical' | 'Fasteners' | 'Packaging' | 'Raw Materials' | 'Pneumatics';
-  unit: 'pcs' | 'box' | 'pack' | 'roll' | 'set' | 'kg';
-  minRequiredStock: number; // Preset in system
+  isbn: string;             // ISBN-13 book identifier (Primary key)
+  sku?: string;             // Standard SKU (defaults to ISBN)
+  title: string;            // Book / Product Title (Primary title)
+  name?: string;            // Standard product name (defaults to Title)
+  category: string;         // 'Workbook' | 'Teacher Resource' | string
+  unit: string;             // 'pcs' | 'box' | 'pack' | 'set' | string
+  minRequiredStock: number; // Preset minimum required stock in system
   stockBalance: number;     // Physical warehouse on-hand stock
   extraPoStock: number;     // Extra PO / Inbound purchase order stock
-  unitCost: number;         // Unit cost in USD
+  unitCost: number;         // Unit cost in USD / Currency
   supplierId: string;
   supplierName: string;
   leadTimeDays: number;
@@ -17,7 +19,9 @@ export interface WMSItem {
 }
 
 export interface StockCalculation {
+  isbn: string;
   sku: string;
+  title: string;
   requiredStock: number;
   stockBalance: number;
   extraPoStock: number;
@@ -30,7 +34,9 @@ export interface StockCalculation {
 }
 
 export interface PurchaseOrderLineItem {
+  isbn?: string;
   sku: string;
+  title?: string;
   name: string;
   unit: string;
   qtyToOrder: number;

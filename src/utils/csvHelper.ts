@@ -14,27 +14,29 @@ export function downloadFile(content: string, filename: string, mimeType = 'text
 }
 
 export function getStockBalanceTemplate(): string {
-  return `SKU,StockBalance,LocationBin,Notes
-SKU-ELC-1042,45,A-02-14,Physical count warehouse shelf 14
-SKU-MEC-3091,85,B-05-02,Cycle count verified
-SKU-FST-8812,40,C-01-09,Fastener rack count
-SKU-PNM-4420,15,D-03-01,Emergency safety stock restock
-SKU-RAW-9011,110,R-01-04,Weight verified
-SKU-PKG-7750,30,W-09-03,Pallet bay 3`;
+  return `ISBN,StockBalance,LocationBin,Notes
+9781108742719,25,A-01-01,Cambridge Primary English Workbook 1 floor count
+9781108789943,20,A-01-02,Cambridge Primary English Workbook 2 shelf count
+9781108819558,18,A-01-03,Cambridge Primary English Workbook 3 count
+9781108760010,35,A-01-04,Cambridge Primary English Workbook 4 restock
+9781108783514,40,A-02-01,Cambridge Teacher Resource 1 verified
+9781382017206,28,B-01-01,Oxford Maths Teacher Guide 1 count
+9781382017275,25,B-01-02,Oxford Maths Teacher Guide 2 count`;
 }
 
 export function getExtraPOTemplate(): string {
-  return `SKU,ExtraPoQty,PONumber,SupplierName,ExpectedDate
-SKU-ELC-1042,50,PO-2026-0901,Omron Industrial Components Ltd,2026-11-05
-SKU-MEC-3091,100,PO-2026-0902,THK Precision Motion,2026-11-08
-SKU-FST-8812,30,PO-2026-0903,Wurth Fasteners Group,2026-11-02
-SKU-PNM-4420,35,PO-2026-0904,SMC Pneumatics International,2026-11-10
-SKU-RAW-9011,40,PO-2026-0905,Alcoa Metal Supply Corp,2026-11-12
-SKU-PKG-7750,25,PO-2026-0906,PackPro Materials Inc,2026-10-31`;
+  return `ISBN,ExtraPoQty,PONumber,SupplierName,ExpectedDate
+9781108742719,25,PO-CUP-2026-001,Cambridge University Press,2026-11-05
+9781108819558,20,PO-CUP-2026-001,Cambridge University Press,2026-11-05
+9781108760010,25,PO-CUP-2026-002,Cambridge University Press,2026-11-06
+9781108783514,20,PO-CUP-2026-003,Cambridge University Press,2026-11-08
+9781382017299,25,PO-OUP-2026-004,Oxford University Press,2026-11-10
+9781382017305,20,PO-OUP-2026-005,Oxford University Press,2026-11-10`;
 }
 
 export interface ParsedBalanceRow {
   sku: string;
+  isbn?: string;
   stockBalance: number;
   locationBin?: string;
   notes?: string;
@@ -43,6 +45,7 @@ export interface ParsedBalanceRow {
 
 export interface ParsedExtraPORow {
   sku: string;
+  isbn?: string;
   extraPoQty: number;
   poNumber?: string;
   supplierName?: string;
@@ -51,32 +54,36 @@ export interface ParsedExtraPORow {
 }
 
 export function parseStockBalanceText(text: string, existingCatalog: WMSItem[]): ParsedBalanceRow[] {
-  const existingSkus = new Set(existingCatalog.map(i => i.sku.trim().toUpperCase()));
+  const existingIdentifiers = new Set<string>();
+  existingCatalog.forEach(i => {
+    if (i.isbn) existingIdentifiers.add(i.isbn.trim().toUpperCase());
+    if (i.sku) existingIdentifiers.add(i.sku.trim().toUpperCase());
+  });
+
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
   if (lines.length === 0) return [];
 
   const results: ParsedBalanceRow[] = [];
-  
-  // Check if first line is header
   const firstLine = lines[0].toLowerCase();
-  const startIndex = (firstLine.includes('sku') || firstLine.includes('balance') || firstLine.includes('qty')) ? 1 : 0;
+  const startIndex = (firstLine.includes('isbn') || firstLine.includes('sku') || firstLine.includes('balance') || firstLine.includes('qty')) ? 1 : 0;
 
   for (let i = startIndex; i < lines.length; i++) {
     const rawLine = lines[i];
-    // Support comma, tab, or semicolon separated
     const parts = rawLine.split(/[,\t;]/).map(p => p.trim().replace(/^["']|["']$/g, ''));
     if (parts.length >= 2) {
-      const sku = parts[0].trim();
+      const idRaw = parts[0].trim();
       const rawQty = parts[1].replace(/[^0-9.-]/g, '');
       const stockBalance = parseInt(rawQty, 10);
       
-      if (sku && !isNaN(stockBalance)) {
+      if (idRaw && !isNaN(stockBalance)) {
+        const isMatched = existingIdentifiers.has(idRaw.toUpperCase());
         results.push({
-          sku,
+          sku: idRaw,
+          isbn: idRaw,
           stockBalance: Math.max(0, stockBalance),
           locationBin: parts[2] || undefined,
           notes: parts[3] || undefined,
-          matched: existingSkus.has(sku.toUpperCase())
+          matched: isMatched
         });
       }
     }
@@ -86,31 +93,37 @@ export function parseStockBalanceText(text: string, existingCatalog: WMSItem[]):
 }
 
 export function parseExtraPOText(text: string, existingCatalog: WMSItem[]): ParsedExtraPORow[] {
-  const existingSkus = new Set(existingCatalog.map(i => i.sku.trim().toUpperCase()));
+  const existingIdentifiers = new Set<string>();
+  existingCatalog.forEach(i => {
+    if (i.isbn) existingIdentifiers.add(i.isbn.trim().toUpperCase());
+    if (i.sku) existingIdentifiers.add(i.sku.trim().toUpperCase());
+  });
+
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
   if (lines.length === 0) return [];
 
   const results: ParsedExtraPORow[] = [];
-  
   const firstLine = lines[0].toLowerCase();
-  const startIndex = (firstLine.includes('sku') || firstLine.includes('po') || firstLine.includes('qty')) ? 1 : 0;
+  const startIndex = (firstLine.includes('isbn') || firstLine.includes('sku') || firstLine.includes('po') || firstLine.includes('qty')) ? 1 : 0;
 
   for (let i = startIndex; i < lines.length; i++) {
     const rawLine = lines[i];
     const parts = rawLine.split(/[,\t;]/).map(p => p.trim().replace(/^["']|["']$/g, ''));
     if (parts.length >= 2) {
-      const sku = parts[0].trim();
+      const idRaw = parts[0].trim();
       const rawQty = parts[1].replace(/[^0-9.-]/g, '');
       const extraPoQty = parseInt(rawQty, 10);
       
-      if (sku && !isNaN(extraPoQty)) {
+      if (idRaw && !isNaN(extraPoQty)) {
+        const isMatched = existingIdentifiers.has(idRaw.toUpperCase());
         results.push({
-          sku,
+          sku: idRaw,
+          isbn: idRaw,
           extraPoQty: Math.max(0, extraPoQty),
           poNumber: parts[2] || undefined,
           supplierName: parts[3] || undefined,
           expectedDate: parts[4] || undefined,
-          matched: existingSkus.has(sku.toUpperCase())
+          matched: isMatched
         });
       }
     }
@@ -120,14 +133,16 @@ export function parseExtraPOText(text: string, existingCatalog: WMSItem[]): Pars
 }
 
 export function exportReplenishmentShortagesCSV(items: WMSItem[]): void {
-  const header = ['SKU', 'Item Name', 'Category', 'Unit', 'Preset Minimum Required', 'Current Stock Balance', 'Extra PO Stock', 'Qty Not Sufficient (Need to Order)', 'Unit Cost ($)', 'Total Order Cost ($)', 'Supplier', 'Bin Location'];
+  const header = ['ISBN', 'SKU', 'Book Title', 'Category', 'Unit', 'Preset Minimum Required', 'Current Stock Balance', 'Extra PO Stock', 'Qty Not Sufficient (Need to Order)', 'Unit Price ($)', 'Total Order Cost ($)', 'Supplier', 'Bin Location'];
   
   const rows = items.map(item => {
     const deficit = Math.max(0, item.minRequiredStock - item.stockBalance - item.extraPoStock);
     const orderCost = (deficit * item.unitCost).toFixed(2);
+    const title = (item.title || item.name || '').replace(/"/g, '""');
     return [
-      `"${item.sku}"`,
-      `"${item.name.replace(/"/g, '""')}"`,
+      `"${item.isbn || item.sku}"`,
+      `"${item.sku || item.isbn}"`,
+      `"${title}"`,
       `"${item.category}"`,
       `"${item.unit}"`,
       item.minRequiredStock,
@@ -143,13 +158,13 @@ export function exportReplenishmentShortagesCSV(items: WMSItem[]): void {
 
   const csvContent = [header.join(','), ...rows].join('\n');
   const dateStr = new Date().toISOString().split('T')[0];
-  downloadFile(csvContent, `WMS_Replenishment_Order_Report_${dateStr}.csv`);
+  downloadFile(csvContent, `WMS_Book_Replenishment_Order_Report_${dateStr}.csv`);
 }
 
 export function exportPurchaseOrderCSV(po: PurchaseOrder): void {
   const meta = [
     `"Purchase Order", "${po.poNumber}"`,
-    `"Supplier", "${po.supplierName}"`,
+    `"Supplier Publisher", "${po.supplierName}"`,
     `"Date Created", "${po.dateCreated}"`,
     `"Expected Delivery", "${po.expectedDelivery}"`,
     `"Status", "${po.status}"`,
@@ -157,10 +172,10 @@ export function exportPurchaseOrderCSV(po: PurchaseOrder): void {
     ''
   ];
 
-  const header = ['SKU', 'Item Description', 'Unit', 'Quantity Ordered', 'Unit Price ($)', 'Line Total ($)'];
+  const header = ['ISBN / SKU', 'Book Title', 'Unit', 'Quantity Ordered', 'Unit Price ($)', 'Line Total ($)'];
   const rows = po.items.map(i => [
-    `"${i.sku}"`,
-    `"${i.name.replace(/"/g, '""')}"`,
+    `"${i.isbn || i.sku}"`,
+    `"${(i.title || i.name).replace(/"/g, '""')}"`,
     `"${i.unit}"`,
     i.qtyToOrder,
     i.unitCost.toFixed(2),

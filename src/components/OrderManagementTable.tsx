@@ -15,12 +15,15 @@ import {
   ShoppingCart,
   FileSpreadsheet,
   HelpCircle,
-  Calculator
+  Calculator,
+  Lock
 } from 'lucide-react';
 import { WMSItem } from '../types/wms';
+import { AppUser } from '../types/auth';
 import { exportReplenishmentShortagesCSV } from '../utils/csvHelper';
 
 interface OrderManagementTableProps {
+  currentUser: AppUser;
   items: WMSItem[];
   selectedSkus: Set<string>;
   onToggleSelectSku: (sku: string) => void;
@@ -37,6 +40,7 @@ type SortField = 'deficit' | 'required' | 'balance' | 'extraPo' | 'sku' | 'cost'
 type SortOrder = 'asc' | 'desc';
 
 export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
+  currentUser,
   items,
   selectedSkus,
   onToggleSelectSku,
@@ -59,9 +63,32 @@ export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
     extraPo: 0
   });
 
+  const permissions = currentUser.options.permissions;
+  const allowedSuppliers = currentUser.options.allowedSuppliers;
+  const allowedCategories = currentUser.options.allowedCategories;
+  const warehouseZone = currentUser.options.warehouseZone;
+
+  // Filter items by admin-configured publisher, category, and warehouse zone scopes
+  const scopedItems = useMemo(() => {
+    let result = items;
+    if (allowedSuppliers && !allowedSuppliers.includes('all') && allowedSuppliers.length > 0) {
+      result = result.filter(item => allowedSuppliers.includes(item.supplierName));
+    }
+    if (allowedCategories && !allowedCategories.includes('all') && allowedCategories.length > 0) {
+      result = result.filter(item => allowedCategories.includes(item.category));
+    }
+    if (warehouseZone && warehouseZone !== 'All Zones') {
+      const zoneLetter = warehouseZone.includes('Zone A') ? 'A' : warehouseZone.includes('Zone B') ? 'B' : null;
+      if (zoneLetter) {
+        result = result.filter(item => item.locationBin?.startsWith(zoneLetter));
+      }
+    }
+    return result;
+  }, [items, allowedSuppliers, allowedCategories, warehouseZone]);
+
   // Calculate items with formula metrics
   const calculatedItems = useMemo(() => {
-    return items.map(item => {
+    return scopedItems.map(item => {
       // THE WMS FORMULA: Required Stock - Stock Balance - Extra PO
       const rawDeficit = item.minRequiredStock - item.stockBalance - item.extraPoStock;
       const qtyNotSufficient = Math.max(0, rawDeficit);
@@ -80,17 +107,25 @@ export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
         totalPipeline,
       };
     });
+  }, [scopedItems]);
+
+  // Dynamic categories from catalog
+  const availableCategories = useMemo(() => {
+    return Array.from(new Set(items.map(i => i.category))).filter(Boolean);
   }, [items]);
 
   // Filtering
   const filteredItems = useMemo(() => {
     return calculatedItems.filter(item => {
-      // Text search
+      // Text search on ISBN, SKU, Title, Name, Supplier, and Bin
+      const term = search.toLowerCase();
       const matchesText = 
-        item.sku.toLowerCase().includes(search.toLowerCase()) ||
-        item.name.toLowerCase().includes(search.toLowerCase()) ||
-        item.supplierName.toLowerCase().includes(search.toLowerCase()) ||
-        item.locationBin.toLowerCase().includes(search.toLowerCase());
+        (item.isbn && item.isbn.toLowerCase().includes(term)) ||
+        (item.sku && item.sku.toLowerCase().includes(term)) ||
+        (item.title && item.title.toLowerCase().includes(term)) ||
+        (item.name && item.name.toLowerCase().includes(term)) ||
+        item.supplierName.toLowerCase().includes(term) ||
+        item.locationBin.toLowerCase().includes(term);
 
       if (!matchesText) return false;
 
@@ -116,7 +151,7 @@ export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
       else if (sortField === 'required') comp = a.minRequiredStock - b.minRequiredStock;
       else if (sortField === 'balance') comp = a.stockBalance - b.stockBalance;
       else if (sortField === 'extraPo') comp = a.extraPoStock - b.extraPoStock;
-      else if (sortField === 'sku') comp = a.sku.localeCompare(b.sku);
+      else if (sortField === 'sku') comp = (a.isbn || a.sku || '').localeCompare(b.isbn || b.sku || '');
       else if (sortField === 'cost') comp = a.orderCost - b.orderCost;
 
       return sortOrder === 'asc' ? comp : -comp;
@@ -157,8 +192,8 @@ export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
   const criticalCount = calculatedItems.filter(i => i.isCritical).length;
   const sufficientCount = calculatedItems.filter(i => !i.isInsufficient).length;
 
-  const allVisibleSkus = sortedItems.map(i => i.sku);
-  const allVisibleSelected = allVisibleSkus.length > 0 && allVisibleSkus.every(sku => selectedSkus.has(sku));
+  const allVisibleSkus = sortedItems.map(i => i.isbn || i.sku || i.id);
+  const allVisibleSelected = allVisibleSkus.length > 0 && allVisibleSkus.every(key => selectedSkus.has(key));
 
   return (
     <div className="space-y-4">
@@ -199,32 +234,52 @@ export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
         {/* 2 Primary Upload Action Icons as requested: Icon 1 Upload Stock Balance, Icon 2 Upload Extra PO */}
         <div className="flex flex-wrap items-center gap-2 self-end md:self-center">
           {/* ICON 1: Upload Stock Balance */}
-          <button
-            type="button"
-            onClick={onOpenUploadBalance}
-            className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-100 bg-cyan-700/80 hover:bg-cyan-600 rounded-lg border border-cyan-500/40 shadow-sm transition-all hover:scale-[1.01]"
-            title="Upload Warehouse Physical Stock Balance CSV / text"
-          >
-            <div className="p-1 rounded bg-cyan-900/60 text-cyan-200">
-              <Package className="w-3.5 h-3.5" />
+          {permissions.canUploadBalance ? (
+            <button
+              type="button"
+              onClick={onOpenUploadBalance}
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-100 bg-cyan-700/80 hover:bg-cyan-600 rounded-lg border border-cyan-500/40 shadow-sm transition-all hover:scale-[1.01] cursor-pointer"
+              title="Upload Warehouse Physical Stock Balance CSV / text"
+            >
+              <div className="p-1 rounded bg-cyan-900/60 text-cyan-200">
+                <Package className="w-3.5 h-3.5" />
+              </div>
+              <span>Upload Stock Balance</span>
+              <Upload className="w-3.5 h-3.5 text-cyan-300" />
+            </button>
+          ) : (
+            <div
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-500 bg-slate-900 border border-slate-800 rounded-lg opacity-60 cursor-not-allowed select-none"
+              title="Disabled by Administrator: You do not have permission to upload stock balance"
+            >
+              <Lock className="w-3.5 h-3.5 text-slate-500" />
+              <span>Upload Stock Balance</span>
             </div>
-            <span>Upload Stock Balance</span>
-            <Upload className="w-3.5 h-3.5 text-cyan-300" />
-          </button>
+          )}
 
           {/* ICON 2: Upload Extra PO Stock */}
-          <button
-            type="button"
-            onClick={onOpenUploadExtraPO}
-            className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-100 bg-amber-700/80 hover:bg-amber-600 rounded-lg border border-amber-500/40 shadow-sm transition-all hover:scale-[1.01]"
-            title="Upload Open Purchase Orders / Extra PO Stock CSV / text"
-          >
-            <div className="p-1 rounded bg-amber-900/60 text-amber-200">
-              <Truck className="w-3.5 h-3.5" />
+          {permissions.canUploadExtraPO ? (
+            <button
+              type="button"
+              onClick={onOpenUploadExtraPO}
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-slate-100 bg-amber-700/80 hover:bg-amber-600 rounded-lg border border-amber-500/40 shadow-sm transition-all hover:scale-[1.01] cursor-pointer"
+              title="Upload Open Purchase Orders / Extra PO Stock CSV / text"
+            >
+              <div className="p-1 rounded bg-amber-900/60 text-amber-200">
+                <Truck className="w-3.5 h-3.5" />
+              </div>
+              <span>Upload Extra PO</span>
+              <Upload className="w-3.5 h-3.5 text-amber-300" />
+            </button>
+          ) : (
+            <div
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-500 bg-slate-900 border border-slate-800 rounded-lg opacity-60 cursor-not-allowed select-none"
+              title="Disabled by Administrator: You do not have permission to upload extra PO manifests"
+            >
+              <Lock className="w-3.5 h-3.5 text-slate-500" />
+              <span>Upload Extra PO</span>
             </div>
-            <span>Upload Extra PO</span>
-            <Upload className="w-3.5 h-3.5 text-amber-300" />
-          </button>
+          )}
         </div>
       </div>
 
@@ -275,42 +330,48 @@ export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              All SKUs ({items.length})
+              All Titles ({scopedItems.length})
             </button>
           </div>
 
           {/* Right: Actions */}
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onOpenPresetManager}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-lg transition-colors"
-            >
-              <Sliders className="w-3.5 h-3.5" />
-              <span>Preset Stock Settings</span>
-            </button>
+            {permissions.canEditPresets && (
+              <button
+                type="button"
+                onClick={onOpenPresetManager}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-lg transition-colors cursor-pointer"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span>Preset Stock Settings</span>
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={() => exportReplenishmentShortagesCSV(items)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white border border-slate-700 rounded-lg transition-colors"
-              title="Export all shortage calculation results into CSV report"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Export CSV</span>
-            </button>
+            {permissions.canExportData && (
+              <button
+                type="button"
+                onClick={() => exportReplenishmentShortagesCSV(scopedItems)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white border border-slate-700 rounded-lg transition-colors cursor-pointer"
+                title="Export all shortage calculation results into CSV report"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Export CSV</span>
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={() => {
-                const insufficient = calculatedItems.filter(i => i.isInsufficient);
-                onOpenGeneratePO(insufficient);
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg shadow-sm transition-all"
-            >
-              <ShoppingCart className="w-3.5 h-3.5" />
-              <span>Order All Insufficient ({insufficientCount})</span>
-            </button>
+            {permissions.canGeneratePO && (
+              <button
+                type="button"
+                onClick={() => {
+                  const insufficient = calculatedItems.filter(i => i.isInsufficient);
+                  onOpenGeneratePO(insufficient);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg shadow-sm transition-all cursor-pointer"
+              >
+                <ShoppingCart className="w-3.5 h-3.5" />
+                <span>Order All Insufficient ({insufficientCount})</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -323,7 +384,7 @@ export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search SKU, item name, bin location, supplier..."
+                placeholder="Search ISBN, book title, bin location, supplier..."
                 className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 placeholder:text-slate-500 focus:outline-hidden focus:border-cyan-500"
               />
             </div>
@@ -332,13 +393,10 @@ export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
               onChange={(e) => setSelectedCategory(e.target.value)}
               className="px-3 py-1.5 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-300 focus:outline-hidden focus:border-cyan-500"
             >
-              <option value="all">All Categories</option>
-              <option value="Electronics">Electronics</option>
-              <option value="Mechanical">Mechanical</option>
-              <option value="Fasteners">Fasteners</option>
-              <option value="Pneumatics">Pneumatics</option>
-              <option value="Packaging">Packaging</option>
-              <option value="Raw Materials">Raw Materials</option>
+              <option value="all">All Categories ({items.length})</option>
+              {availableCategories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
             </select>
           </div>
 
@@ -351,7 +409,7 @@ export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const targetItems = items.filter(i => selectedSkus.has(i.sku));
+                  const targetItems = items.filter(i => (i.sku && selectedSkus.has(i.sku)) || (i.isbn && selectedSkus.has(i.isbn)));
                   onOpenGeneratePO(targetItems);
                 }}
                 className="px-2.5 py-1 text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded"
@@ -382,11 +440,11 @@ export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
                   className="px-3 py-3 cursor-pointer hover:text-slate-200 select-none"
                 >
                   <div className="flex items-center gap-1">
-                    <span>SKU & Bin</span>
+                    <span>ISBN / SKU & Bin</span>
                     <ArrowUpDown className="w-3 h-3 text-slate-500" />
                   </div>
                 </th>
-                <th className="px-3 py-3">Description & Category</th>
+                <th className="px-3 py-3">Book Title & Category</th>
                 <th className="px-2 py-3 text-center">UOM</th>
                 <th 
                   onClick={() => handleSort('required')}
@@ -438,7 +496,8 @@ export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
                 </tr>
               ) : (
                 sortedItems.map((item) => {
-                  const isSelected = selectedSkus.has(item.sku);
+                  const itemKey = item.isbn || item.sku || item.id;
+                  const isSelected = selectedSkus.has(itemKey) || (item.isbn ? selectedSkus.has(item.isbn) : false) || (item.sku ? selectedSkus.has(item.sku) : false);
                   const isEditing = editingItemId === item.id;
 
                   return (
@@ -457,24 +516,28 @@ export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          onChange={() => onToggleSelectSku(item.sku)}
+                          onChange={() => onToggleSelectSku(itemKey)}
                           className="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0 focus:outline-hidden cursor-pointer"
                         />
                       </td>
 
-                      {/* SKU & Bin Location */}
+                      {/* SKU / ISBN & Bin Location */}
                       <td className="px-3 py-3 whitespace-nowrap">
-                        <div className="font-semibold text-slate-100">{item.sku}</div>
+                        <div className="font-semibold text-slate-100 flex items-center gap-1.5 font-mono">
+                          <span>{item.isbn || item.sku}</span>
+                        </div>
                         <div className="text-[11px] text-slate-500 flex items-center gap-1 font-mono">
                           <span>Bin: {item.locationBin}</span>
                         </div>
                       </td>
 
-                      {/* Name & Category */}
+                      {/* Title & Category */}
                       <td className="px-3 py-3 font-sans">
-                        <div className="text-slate-200 font-medium line-clamp-1">{item.name}</div>
+                        <div className="text-slate-200 font-medium line-clamp-1" title={item.title || item.name}>
+                          {item.title || item.name}
+                        </div>
                         <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
-                          <span>{item.category}</span>
+                          <span className="text-indigo-400/90 font-medium">{item.category}</span>
                           <span className="text-slate-600">·</span>
                           <span className="font-mono text-slate-400">${item.unitCost.toFixed(2)}/unit</span>
                         </div>
@@ -608,27 +671,33 @@ export const OrderManagementTable: React.FC<OrderManagementTableProps> = ({
                             </button>
                           </div>
                         ) : (
-                          <div className="flex items-center justify-end gap-1.5">
-                            {item.isInsufficient ? (
+                          <div className="flex items-center justify-end gap-1.5 font-sans">
+                            {item.isInsufficient && permissions.canGeneratePO && (
                               <button
                                 type="button"
                                 onClick={() => onOpenGeneratePO([item])}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded shadow-xs transition-colors"
-                                title="Create Supplier Purchase Order for this item"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded shadow-xs transition-colors cursor-pointer"
+                                title="Create Supplier Purchase Order for this title"
                               >
                                 <ShoppingCart className="w-3 h-3" />
                                 <span>Order</span>
                               </button>
-                            ) : null}
+                            )}
 
-                            <button
-                              type="button"
-                              onClick={() => handleStartEdit(item)}
-                              className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded transition-colors"
-                              title="Quick edit preset, balance, or extra PO values"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
+                            {permissions.canEditPresets && (
+                              <button
+                                type="button"
+                                onClick={() => handleStartEdit(item)}
+                                className="p-1 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                                title="Quick edit preset, balance, or extra PO values"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            {!permissions.canGeneratePO && !permissions.canEditPresets && (
+                              <span className="text-slate-600 text-xs">—</span>
+                            )}
                           </div>
                         )}
                       </td>

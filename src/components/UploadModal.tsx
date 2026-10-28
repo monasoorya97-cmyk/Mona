@@ -172,7 +172,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-800/60 border border-slate-800 rounded-lg">
             <div className="flex items-center gap-2 text-xs text-slate-300">
               <FileText className="w-4 h-4 text-slate-400" />
-              <span>Format: <strong>SKU, {isBalance ? 'StockBalance' : 'ExtraPoQty'}</strong> (CSV or Tab-Delimited)</span>
+              <span>Format: <strong>ISBN / SKU, {isBalance ? 'StockBalance' : 'ExtraPoQty'}</strong> (CSV or Tab-Delimited)</span>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -249,7 +249,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
             <textarea
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder={`SKU,${isBalance ? 'StockBalance' : 'ExtraPoQty'}\nSKU-ELC-1042,50\nSKU-MEC-3091,100`}
+              placeholder={`ISBN,${isBalance ? 'StockBalance' : 'ExtraPoQty'}\n9781108742719,30\n9781382017206,25`}
               rows={4}
               className="w-full px-3 py-2 text-xs font-mono bg-slate-950 border border-slate-800 rounded-lg text-slate-200 placeholder:text-slate-600 focus:outline-hidden focus:border-cyan-500/80 resize-none"
             />
@@ -305,7 +305,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({
                   <thead className="bg-slate-800/80 text-slate-400 font-medium border-b border-slate-800 sticky top-0">
                     <tr>
                       <th className="px-3 py-2">Status</th>
-                      <th className="px-3 py-2">SKU</th>
+                      <th className="px-3 py-2">ISBN / SKU</th>
                       <th className="px-3 py-2 text-right">
                         {isBalance ? 'Uploaded Balance' : 'Uploaded Extra PO'}
                       </th>
