@@ -1,0 +1,6 @@
+{
+  "name": "Apex WMS - Order Management & Stock Replenishment",
+  "description": "Warehouse Management System (Phase 1): Automated stock balance and extra PO upload, preset minimum stock thresholds, shortage calculation, and supplier purchase order generation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
